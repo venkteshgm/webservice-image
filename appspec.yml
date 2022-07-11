@@ -1,0 +1,16 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ec2-user/webservice
+file_exists_behavior: OVERWRITE
+hooks:
+  BeforeInstall:
+    - location: cd-scripts/beforeInstall.sh
+      runas: root
+  AfterInstall:
+    - location: cd-scripts/afterInstall.sh
+      runas: root
+  ApplicationStart:
+    - location: cd-scripts/applicationStart.sh
+      runas: root

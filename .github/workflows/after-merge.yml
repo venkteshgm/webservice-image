@@ -1,0 +1,85 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: After merge check
+on:
+  push:
+    branches:
+    - main
+jobs:
+  build:
+    name: on-push
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [ 14.x ]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v2
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Installing Node Dependencies 
+      run: npm ci 
+
+    
+
+
+
+    
+
+
+    ###########################################
+
+    # - name: Zip dependency file
+    #   run: zip -r webservice.zip .
+    # - name: Packer Init
+    #   uses: hashicorp/packer-github-actions@master
+    #   with:
+    #     command: init
+    #     target: application-ami.pkr.hcl
+    # - name: Packer Build
+    #   uses: hashicorp/packer-github-actions@master
+    #   with: 
+    #     command: build
+    #     arguments: -var AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} -var AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     target: application-ami.pkr.hcl
+
+
+    ################################
+
+    - name: Building Deployment Revision 
+      run: | 
+        mkdir codedeploy_artifact 
+        zip -r build-${{ github.sha }}.zip . 
+        pwd 
+        mv build-${{ github.sha }}.zip codedeploy_artifact 
+        cd codedeploy_artifact 
+
+    - name: Configuring AWS credentials from Test account
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    - name: Uploading Application Revision to CodeDeploy S3 Bucket
+      run: |
+        aws s3 sync ./codedeploy_artifact s3://${{ secrets.CODEDEPLOY_BUCKET }}
+    - name: CodeDeploy API call
+      run: |
+        output=$(aws deploy create-deployment \
+          --application-name csye6225-webapp \
+          --deployment-config-name CodeDeployDefault.AllAtOnce \
+          --deployment-group-name csye6225-webapp-deployment \
+          --description "CSYE6255 - CodeDeploy from Github Actions" \
+          --s3-location bucket=${{ secrets.CODEDEPLOY_BUCKET }},key=build-${{ github.sha }}.zip,bundleType=zip \
+          --region ${{ secrets.AWS_REGION }} \
+          --file-exists-behavior OVERWRITE \
+          --output json)
+          depId=$(echo $output | jq -r '.deploymentId')
+          aws deploy wait deployment-successful --deployment-id $depId
+      env:
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        AWS_CODEDEPLOY_BUCKET: ${{ secrets.CODEDEPLOY_BUCKET }}
